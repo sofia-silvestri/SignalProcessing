@@ -5,15 +5,15 @@ use processor_engine::stream_processor::StreamProcessor;
 use processor_engine::ffi::{TraitObjectRepr, export_stream_processor, get_error_return};
 #[unsafe(no_mangle)]
 pub static MODULE: ModuleStructFFI  = ModuleStructFFI {
-    name: b"\0".as_ptr() as *const c_char,
-    description: b"\0".as_ptr() as *const c_char,
-    authors: b"\0".as_ptr() as *const c_char,
-    release_date: b"\0".as_ptr() as *const c_char,
-    version: Version{ major: 0,minor: 0,build: 0},
+    name: b"Digital Fourier Transform\0".as_ptr() as *const c_char,
+    description: b"The library provides digital Fourier transform functionalities.\0".as_ptr() as *const c_char,
+    authors: b"Sofia Silvestri\0".as_ptr() as *const c_char,
+    release_date: b"2025/12/06\0".as_ptr() as *const c_char,
+    version: Version{ major: 1,minor: 0,build: 0},
     dependencies: std::ptr::null(),
     dependency_number: 0,
-    provides: std::ptr::null(),
-    provides_lengths: 0,
+    provides: [b"Fft\0".as_ptr() as *const c_char].as_ptr(),
+    provides_lengths: 1,
 };
 #[unsafe(no_mangle)]
 pub extern "C" fn get_processor_modules(proc_block: *const u8, 
