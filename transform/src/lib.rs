@@ -29,7 +29,7 @@ pub extern "C" fn get_processor_modules(proc_block: *const u8,
     let proc: Box<dyn StreamProcessor>;
     match proc_block_str {
         "Fft" => {
-            proc = Box::new(fft::Fft::new(block_name_str));
+            proc = Box::new(fft::FftProcessor::new(block_name_str));
             export_stream_processor(proc)
         }
         _ => {

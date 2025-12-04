@@ -4,110 +4,15 @@ use std::fmt::Display;
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use serde::Serialize;
+use rustfft::{FftPlanner, Fft, num_complex::Complex};
 use stream_proc_macro::{StreamBlockMacro};
 use data_model::streaming_data::{StreamingError, StreamingState};
 use data_model::memory_manager::{DataTrait, StaticsTrait, State, Parameter, Statics};
 use processor_engine::stream_processor::{StreamBlock, StreamBlockDyn, StreamProcessor};
 use processor_engine::connectors::{ConnectorTrait, Input, Output};
-use utils::math::complex::Complex;
-use utils::math::numbers::factorize;
-
-pub struct FftCore {
-    size: usize,
-    weights: Vec<Complex<f64>>,
-    factorization: Vec<usize>,
-}
-
-impl FftCore
-{
-    pub fn new(inverse: bool, size: usize) -> Self {
-        let mut weights: Vec<Complex<f64>> = Vec::with_capacity(size);
-        for i in 0..size {
-            let angle: f64 = if inverse {
-                2.0 * std::f64::consts::PI * (i as f64) / (size as f64)
-            } else {
-                -2.0 * std::f64::consts::PI * (i as f64) / (size as f64)
-            };
-            weights.push(Complex::new(angle.cos(), angle.sin()));
-        }
-        let factorization = factorize(size as u64)
-            .iter()
-            .map(|&x| x as usize)
-            .collect();
-        Self {
-            size,
-            weights,
-            factorization: factorization,
-        }
-    }
-
-    fn fft_process(&self,
-        input: &Vec<Complex<f64>>,
-        size: usize,
-        index_factor: usize,
-        start: usize,
-        step: usize) -> Vec<Complex<f64>>
-    {
-        if size == 1 {
-            return input.clone();
-        }
-        let mut output : Vec<Complex<f64>> = vec![Complex::new(0.0, 0.0); size];
-
-        if size == 2 {
-            output[0] = input[0].clone() + input[1].clone();
-            output[1] = input[0].clone() - input[1].clone();
-            
-            return output;
-        }
-        let chunk_number = self.factorization[index_factor];
-        let chunk_size = size / chunk_number;
-        let mut chunks : Vec<Vec<Complex<f64>>> = vec![vec![Complex::new(0.0, 0.0); chunk_size]; chunk_number];
-        for i in 0..chunk_number {
-            let chunk_fft = self.fft_process(
-                input,
-                chunk_size,
-                index_factor + 1,
-                start + i * step,
-                step * chunk_number,
-            );
-            chunks[i] = chunk_fft;
-        }
-        for k in 0..size {
-            for i in 0..chunk_number as usize {
-                let index_sel = k % chunk_size as usize;
-                output[k] += chunks[i][index_sel] * self.weights[index_sel];
-            }
-        }
-        output
-    }
-
-    pub fn fft_real(&self, input: &Vec<f64>) -> Vec<Complex<f64>>
-    {
-        let mut input: Vec<Complex<f64>> = input.iter().map(|&x| Complex::new(x, 0.0)).collect();
-        if input.len() < self.size {
-            let mut padded_input = input.clone();
-            for _ in input.len()..self.size {
-                padded_input.push(Complex::new(0.0, 0.0));
-            }
-            input = padded_input;
-        }
-        self.fft_process(&input, self.size, 0, 0, 1)
-    }
-    pub fn fft_complex(&self, input: &Vec<Complex<f64>>) -> Vec<Complex<f64>> 
-    {
-        if input.len() < self.size {
-            let mut padded_input = input.clone();
-            for _ in input.len()..self.size {
-                padded_input.push(Complex::new(0.0, 0.0));
-            }
-            return self.fft_process(&padded_input, self.size, 0, 0, 1);
-        }
-        self.fft_process(input, self.size, 0, 0, 1)
-    }
-}
 
 #[derive(StreamBlockMacro)]
-pub struct Fft {
+pub struct FftProcessor {
     name:       &'static str,
     inputs:     HashMap<&'static str, Box<dyn ConnectorTrait>>,
     outputs:    HashMap<&'static str, Box<dyn ConnectorTrait>>,
@@ -116,9 +21,9 @@ pub struct Fft {
     state:      HashMap<&'static str, Box<dyn DataTrait>>,
     lock:       Arc<Mutex<()>>,
     proc_state: Arc<Mutex<StreamingState>>,
-    fft_core:   Option<FftCore>,
+    fft_core:   Option<Arc<dyn Fft<f64>>>,
 }
-impl Fft {
+impl FftProcessor {
     pub fn new(name: &'static str) -> Self {
         let mut ret = Self {
             name,
@@ -140,7 +45,7 @@ impl Fft {
         ret
     }
 }
-impl StreamProcessor for Fft {
+impl StreamProcessor for FftProcessor {
     fn init(&mut self) -> Result<(), StreamingError> {
         if self.check_state(StreamingState::Running) {
             return Err(StreamingError::InvalidStateTransition)
@@ -150,7 +55,12 @@ impl StreamProcessor for Fft {
         }
         let fft_size = self.get_statics::<usize>("fft_size")?.get_value();
         let inverse = self.get_statics::<bool>("inverse")?.get_value();
-        self.fft_core = Some(FftCore::new(inverse, fft_size));
+        let mut planner = FftPlanner::new();
+        if inverse {
+            self.fft_core = Some(planner.plan_fft_inverse(fft_size));
+        } else {
+            self.fft_core = Some(planner.plan_fft_forward(fft_size));
+        }
         self.set_state(StreamingState::Initial);
         Ok(())
     }
@@ -170,17 +80,44 @@ impl StreamProcessor for Fft {
         let output_signal: Vec<Complex<f64>>;
 
         if complex_input {
-            let input_signal = self.recv_input::<Vec<Complex<f64>>>("complex_signal")?;
-            output_signal = self.fft_core.as_ref().unwrap().fft_complex(&input_signal);
+            let mut input_signal = self.recv_input::<Vec<Complex<f64>>>("complex_signal")?;
+            self.fft_core.as_ref().unwrap().process(&mut input_signal);
+            self.send_output::<Vec<Complex<f64>>>("output_transform", input_signal)?;
         } else {
-            let input_signal = self.recv_input::<Vec<f64>>("real_signal")?;
-            output_signal = self.fft_core.as_ref().unwrap().fft_real(&input_signal);
+            let mut input_signal = self.recv_input::<Vec<f64>>("real_signal")?;
+            let mut input_signal: Vec<Complex<f64>> = input_signal.into_iter()
+                .map(|x| Complex{ re: x, im: 0.0 })
+                .collect();
+            self.fft_core.as_ref().unwrap().process(&mut input_signal);
+            self.send_output::<Vec<Complex<f64>>>("output_transform", input_signal)?;
         }
-        self.send_output::<Vec<Complex<f64>>>("output_transform", output_signal)?;
         Ok(())
     }
     fn stop(&mut self) -> Result<(), StreamingError> {
         self.set_state(StreamingState::Stopped);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+    #[test]
+    fn test_fft() {
+        let size = 16384;
+        let repetition = 10000;
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(size);
+
+        let mut signal: Vec<Complex<f64>> = (0..size)
+            .map(|x| Complex::new(x as f64, 0.0))
+            .collect();
+        let start = Instant::now();
+        for _ in 0..repetition {
+            let _ = fft.process(&mut signal);
+        }
+        let duration = start.elapsed();
+        println!("Mean time is: {:?}", (duration.as_secs_f64()) / repetition as f64);
     }
 }
