@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::any::Any;
-use std::fmt::Display;
+use std::fmt::Debug;
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use serde::Serialize;
