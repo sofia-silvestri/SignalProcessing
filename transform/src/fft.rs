@@ -75,10 +75,7 @@ impl StreamProcessor for FftProcessor {
         Ok(())
     }
     fn process(&mut self) -> Result<(), StreamingError> {
-        let fft_size = self.get_statics::<usize>("fft_size")?.get_value();
         let complex_input = self.get_statics::<bool>("complex_input")?.get_value();
-        let output_signal: Vec<Complex<f64>>;
-
         if complex_input {
             let mut input_signal = self.recv_input::<Vec<Complex<f64>>>("complex_signal")?;
             self.fft_core.as_ref().unwrap().process(&mut input_signal);
