@@ -1,6 +1,7 @@
 pub mod zpk;
 pub mod ss;
 pub mod tf;
+mod state_space;
 use std::ffi::c_char;
 use data_model::modules::{Version,ModuleStructFFI};
 use processor_engine::stream_processor::StreamProcessor;
