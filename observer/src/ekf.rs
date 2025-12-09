@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::any::Any;
-use std::fmt::Display;
+use std::fmt::Debug;
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use serde::Serialize;
@@ -39,11 +39,33 @@ impl Ekf {
 }
 impl StreamProcessor for Ekf {
     fn init(&mut self) -> Result<(), StreamingError> {
+        if self.check_state(StreamingState::Running) {
+            return Err(StreamingError::InvalidStateTransition)
+        }
+        if !self.is_initialized() {
+            return Err(StreamingError::InvalidStatics)
+        }
+        self.set_state(StreamingState::Initial);
+        Ok(())
     }
     fn run(&mut self) -> Result<(), StreamingError> {
+        if self.check_state(StreamingState::Stopped) {
+            return Err(StreamingError::InvalidStateTransition);
+        }
+        if !self.is_initialized() {
+            return Err(StreamingError::InvalidStatics)
+        }
+        self.set_state(StreamingState::Running);
+        while !self.check_state(StreamingState::Stopped) {
+            self.process()?;
+        }
+        Ok(())
     }
     fn process(&mut self) -> Result<(), StreamingError> {
+        Ok(())
     }
     fn stop(&mut self) -> Result<(), StreamingError> {
+        self.set_state(StreamingState::Stopped);
+        Ok(())
     }
 }

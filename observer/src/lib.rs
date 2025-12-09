@@ -30,8 +30,8 @@ pub extern "C" fn get_processor_modules(proc_block: *const u8,
     };
     let proc: Box<dyn StreamProcessor>;
     match proc_block_str {
-        "alpha_beta_gamma" => {
-            proc = Box::new(alpha_beta_gamma::alpha_beta_gamma::new(block_name_str));
+        "AlphaBetaGamma" => {
+            proc = Box::new(alpha_beta_gamma::AlphaBetaGamma::new(block_name_str));
             export_stream_processor(proc)
         }
         "Ekf" => {
