@@ -1,4 +1,5 @@
 pub mod alpha_beta_gamma;
+pub mod kalman_filter;
 pub mod ekf;
 pub mod ukf;
 use std::ffi::c_char;
@@ -32,6 +33,10 @@ pub extern "C" fn get_processor_modules(proc_block: *const u8,
     match proc_block_str {
         "AlphaBetaGamma" => {
             proc = Box::new(alpha_beta_gamma::AlphaBetaGamma::new(block_name_str));
+            export_stream_processor(proc)
+        }
+        "KalmanFilter" => {
+            proc = Box::new(kalman_filter::KalmanFilter::new(block_name_str));
             export_stream_processor(proc)
         }
         "Ekf" => {
