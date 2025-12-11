@@ -116,13 +116,13 @@ impl StreamProcessor for KalmanFilter {
         {
             let _lock = self.lock.lock().unwrap();
             let u = Matrix::from_vec(vec![input.clone()]).transpose();
-            let x_prior = A.clone() * Matrix::from_vec(vec![state.clone()]) + B * u;
-            let P_prior = A.clone() * P * A.clone().transpose() + Q;
-            let y = Matrix::from_vec(vec![input.clone()]).transpose() - H.clone() * x_prior.clone();
-            let S = H.clone() * P_prior.clone() * H.clone().transpose() + R;
-            let K = P_prior.clone() * H.clone().transpose() * S.inverse().unwrap();
-            let x_post = x_prior.clone() + K.clone() * y;
-            P = (Matrix::identity(K.clone().rows) - K.clone() * H.clone()) * P_prior;
+            let x_prior = &A * &Matrix::from_vec(vec![state.clone()]) + &B * &u;
+            let P_prior = &A * &P * A.transpose() + Q;
+            let y = &Matrix::from_vec(vec![input.clone()]).transpose() - &(&H * &x_prior);
+            let S = &H * &P_prior * H.transpose() + R;
+            let K = &P_prior * &H.transpose() * S.inverse().unwrap();
+            let x_post = &x_prior + &(&K * &y);
+            P = (Matrix::identity(K.rows) - &K * &H) * P_prior;
             state = x_post.to_vec()[0].clone();
         }
         let _ = self.set_state_value("state", state.clone());
